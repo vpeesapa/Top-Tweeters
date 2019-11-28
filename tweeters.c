@@ -7,34 +7,63 @@
         printf(msg);         \
         exit(1)
 
-#define MAX_LINE_LENGTH 1024
+#define MAX_LINE_LENGTH 1024 + 1
 #define MAX_FILE_LINES 20000
 #define NAME "name"
 #define QUOTED_NAME "\"name\""
 /*TODO notes
    314: Only strip 1 layer of quotes
 */
-
 typedef struct {
-    char* name;
+    char name[MAX_LINE_LENGTH];
     int count;
 } Tweet;
 
+typedef struct {
+    int numTweets;
+    Tweet* tweets;
+} TweetData;
+
 // FILE DECLARATIONS
-Tweet** bubbleSort(Tweet** tweets, int numTweets);
-Tweet* findTweet(Tweet** tweets, char* name);
+void bubbleSort(Tweet* tweets, int numTweets);
+Tweet* findTweet(Tweet* tweets, char* name, int numTweets);
 int getNameColumnPosition(FILE* fp);
 bool isDelimiter(char c, char* delimiters);
 bool matches(char* str);
-Tweet** parseFile(FILE* fp);
+TweetData* parseFile(FILE* fp);
 void printTop10(FILE* fp);
 char** tokenize(char* line, char* delimiters);
 Tweet toTweet(char** data);
+char* trim(char* str);
 
-Tweet* findTweet(Tweet** tweets, char* name) {
-    for (int i = 0; tweets[i] != NULL; i++) {
-        if (!strcmp(tweets[i]->name, name)) {
-            return tweets[i];
+void bubbleSort(Tweet* tweets, int numTweets) {
+    Tweet* tweetL;
+    Tweet* tweetR;
+    Tweet temp;
+
+    if (numTweets < 1) {
+        return;
+    }
+
+    for (int i = 0; i < numTweets - 1; i++) {
+        for (int j = 0; j < numTweets - i - 1; j++) {
+            tweetL = &tweets[j];
+            tweetR = &tweets[j + 1];
+
+            if (tweetR->count > tweetL->count) {
+                temp = *tweetL;
+                *tweetL = *tweetR;
+                *tweetR = temp;
+            }
+        }
+    }
+}
+
+
+Tweet* findTweet(Tweet* tweets, char* name, int numTweets) {
+    for (int i = 0; i < numTweets; i++) {
+        if (!strcmp(tweets[i].name, name)) {
+            return &tweets[i];
         }
     }
     return NULL;
@@ -68,6 +97,12 @@ int getNameColumnPosition(FILE* fp) {
         RAISE_ERROR("2Invalid Input Format\n");
     }
 
+    // deallocate dynamic memory
+    for (int i = 0; i < MAX_LINE_LENGTH; i++) {
+        free(tokenizedLine[i]);
+    }
+    free(tokenizedLine);
+
     return namePos;
 }
 
@@ -87,140 +122,111 @@ bool matches(char* str) {
 }
 
 
-Tweet** parseFile(FILE* fp) {
-    char** fileData;
+TweetData* parseFile(FILE* fp) {
     char line[MAX_LINE_LENGTH];
-    bool nameFound;
     int namePos;
-    char* name;
-    int numTweets;
-    Tweet** tweets;
+    TweetData* tweetData;
     Tweet* tweet;
     char** tokenizedLine;
 
     // dynamic allocation
-    tweets = (Tweet**)malloc(MAX_FILE_LINES * MAX_LINE_LENGTH * sizeof(Tweet*));
+    tweetData = (TweetData*)malloc(sizeof(TweetData));
+    tweetData->tweets = (Tweet*)malloc(MAX_FILE_LINES * MAX_LINE_LENGTH * sizeof(Tweet));
 
     // get position of name column in the header row
     namePos = getNameColumnPosition(fp);
 
     // convert file data into Tweet structs
-    numTweets = 0;
+    tweetData->numTweets = 0;
     for (int i = 0; fgets(line, MAX_LINE_LENGTH, fp); i++) {
         tokenizedLine = tokenize(line, "\n,");
-        name = tokenizedLine[namePos];
-        tweet = findTweet(tweets, name);
+        tweet = findTweet(tweetData->tweets, tokenizedLine[namePos], tweetData->numTweets);
         if (tweet) {
             tweet->count++;
         } else {
-            tweet = (Tweet*)malloc(sizeof(Tweet));
-            tweet->name = name;
-            tweet->count = 1;
-            tweets[numTweets++] = tweet;
+            strcpy(tweetData->tweets[tweetData->numTweets].name, tokenizedLine[namePos]);
+            tweetData->tweets[tweetData->numTweets].count = 1;
+            tweetData->numTweets += 1;
         }
         if (i % 1000 == 0) {
         printf("%d\n", i);}
     }
 
-    return bubbleSort(tweets, numTweets);
+    for (int i = 0; i < MAX_LINE_LENGTH; i++) {
+        free(tokenizedLine[i]);
+    }
+    free(tokenizedLine);
+
+    bubbleSort(tweetData->tweets, tweetData->numTweets);
+
+    return tweetData;
 }
 
 
-
-// TODO NOTE: don't use strlen use memcpy, etc
 void printTop10(FILE* fp) {
-    Tweet** tweets = parseFile(fp);
+    TweetData* tweetData = parseFile(fp);
 
-    for (int i = 0; tweets[i] != NULL && i < 10; i++) {
-        printf("%s: %d\n", tweets[i]->name, tweets[i]->count);
-    }
-    // TODO get position of tweeter column from header on line 1
-    // TODO get rest of lines of fp, strtok for ',', check if tweeterCol
-    // exists, then count into a hashtable
-    // TODO bubbleSort and print
-}
-
-
-Tweet** bubbleSort(Tweet** tweets, int numTweets) {
-    Tweet* tweetL;
-    Tweet* tweetR;
-    Tweet temp;
-
-    if (numTweets < 1) {
-        return tweets;
-    }
-
-    for (int i = 0; i < numTweets - 1; i++) {
-        for (int j = 0; j < numTweets - i - 1; j++) {
-            tweetL = tweets[j];
-            tweetR = tweets[j + 1];
-
-            if (tweetR->count > tweetL->count) {
-                temp = *tweetL;
-                *tweetL = *tweetR;
-                *tweetR = temp;
-            }
+    for (int i = 0; i < tweetData->numTweets; i++) {
+        if (i < 10) {
+            printf("%s: %d\n", tweetData->tweets[i].name, tweetData->tweets[i].count);
         }
     }
-    return tweets;
-}
 
-
-char* trim(char* str) {
-    char* ptr;
-
-    // remove leading spaces
-    while (*str == ' ' || *str == '\r') {
-        str++;
-    }
-
-    // remove trailing spaces from end
-    ptr = str;
-    while (*ptr != '\0') { // find last character
-        ptr++;
-    }
-    ptr--;
-    while ((*ptr == ' ' || *ptr == '\r') && ptr != str) { // remove trailing spaces
-        ptr--;
-    }
-
-    // null terminate
-    *(ptr + 1) = '\0';
-
-    return str;
+    free(tweetData->tweets);
+    free(tweetData);
 }
 
 
 char** tokenize(char* line, char* delimiters) {
-    char** elements;
+    char** tokens;
     int numElements;
     char* element;
+    char* trimmedElement;
     int size; // represents current size of element
 
     // dynamic allocation
-    elements = (char**)malloc((MAX_LINE_LENGTH + 1) * sizeof(char*));
-    for (int i = 0; i < MAX_LINE_LENGTH + 1; i++) {
-        elements[i] = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
+    tokens = (char**)malloc((MAX_LINE_LENGTH) * sizeof(char*));
+    for (int i = 0; i < MAX_LINE_LENGTH; i++) {
+        tokens[i] = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
     }
-    element = (char*)malloc((MAX_LINE_LENGTH + 1) * sizeof(char)); // + 1 for null terminator
+    element = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
 
     // tokenize line by delimiters
     size = numElements = 0;
-        for (int i = 0; line[i] != '\0'; i++) { // loop until end of line
+    for (int i = 0; line[i] != '\0'; i++) { // loop until end of line
         // check if char is a delimiter and save 1 byte for null terminator
         if (!isDelimiter(line[i], delimiters) && size < MAX_LINE_LENGTH - 1) {
             element[size++] = line[i];
         } else {
             element[size] = '\0'; // TODO is this needed?
-            element = trim(element);
-            memcpy(elements[numElements++], element, size + 1);
+            trimmedElement = trim(element);
+            memcpy(tokens[numElements++], trimmedElement, size + 1);
             size = 0;
         }
     }
 
-    elements[numElements] =  '\0';
+    tokens[numElements] = '\0';
+    free(element);
 
-    return elements;
+    return tokens;
+}
+
+
+char* trim(char* str) {
+    char* end;
+
+    // trim leading spaces
+    while (*str == ' ' || *str == '\r') str++;
+
+    // trim trailing spaces
+    end = str + strlen(str) - 1;
+    
+    while (end >= str && (*end == ' ' || *end == '\r')) end--;
+
+    // null terminate
+    end[1] = '\0';
+
+    return str;
 }
 
 
