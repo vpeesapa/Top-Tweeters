@@ -1,45 +1,220 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
 
-/*
- * Function that checks if the program has one additional command line argument
- * @numArgs: The number of command line arguments for the program
- */
-void checkArgs(int numArgs)
-{
+#define RAISE_ERROR(msg)     \
+        printf(msg);         \
+        exit(1)
 
-	if(numArgs != 2) {
-		printf("Invalid number of arguments.\n");
-		exit(0);
-	}
+#define MAX_LINE_LENGTH 1024
+#define MAX_FILE_LINES 20000
+#define NAME "name"
+#define QUOTED_NAME "\"name\""
+/*TODO notes
+   314: Only strip 1 layer of quotes
+*/
+
+typedef struct {
+    char* name;
+    int count;
+} Tweet;
+
+// FILE DECLARATIONS
+Tweet* findTweet(Tweet** tweets, char* name);
+int getNameColumnPosition(FILE* fp);
+bool isDelimiter(char c, char* delimiters);
+bool matches(char* str);
+Tweet* parseFile(FILE* fp);
+void printTop10(FILE* fp);
+char** tokenize(char* line, char* delimiters);
+Tweet toTweet(char** data);
+
+Tweet* findTweet(Tweet** tweets, char* name) {
+    for (Tweet* tweet = tweets[0]; tweet != NULL; tweet++) {
+        if (!strcmp(tweet->name, name)) {
+            return tweet;
+        }
+    }
+    return NULL;
+}
+
+
+int getNameColumnPosition(FILE* fp) {
+    char line[MAX_LINE_LENGTH];
+    bool nameFound;
+    int namePos;
+    char** tokenizedLine;
+
+    // get header
+    fgets(line, MAX_LINE_LENGTH, fp);
+    tokenizedLine = tokenize(line, "\n,");
+    
+    nameFound = false;
+    for (int col = 0; col < sizeof(tokenizedLine) / sizeof(char); col++) {
+        // check for duplicate name columns
+        if (matches(tokenizedLine[col]) && nameFound) {
+            RAISE_ERROR("Invalid Input Format\n");
+        }
+
+        if (matches(tokenizedLine[col])) {
+            namePos = col;
+            nameFound= true;
+        }
+    }
+
+    if (!nameFound) {
+        RAISE_ERROR("Invalid Input Format\n");
+    }
+
+    return namePos;
+}
+
+
+bool isDelimiter(char c, char* delimiters) {
+    for (int i = 0; delimiters[i] != '\0'; i++) {
+        if (c == delimiters[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+bool matches(char* str) {
+    return !strcmp(str, NAME) || !strcmp(str, QUOTED_NAME);
+}
+
+
+Tweet* parseFile(FILE* fp) {
+    char** fileData;
+    char line[MAX_LINE_LENGTH];
+    bool nameFound;
+    int namePos;
+    char* name;
+    int numTweets;
+    Tweet** tweets;
+    Tweet* tweet;
+    char** tokenizedLine;
+
+    // dynamic allocation
+    tweets = (Tweet**)malloc(MAX_FILE_LINES * MAX_LINE_LENGTH * sizeof(Tweet*));
+
+    // get position of name column in the header row
+    namePos = getNameColumnPosition(fp);
+
+    // convert file data into Tweet structs
+    numTweets = 0;
+    for (int i = 0; fgets(line, MAX_LINE_LENGTH, fp); i++) {
+        tokenizedLine = tokenize(line, "\n,");
+        name = tokenizedLine[namePos];
+        tweet = findTweet(tweets, name);
+        if (tweet) {
+            tweet->count++;
+        } else {
+            tweet = (Tweet*)malloc(sizeof(Tweet));
+            tweet->name = name;
+            tweet->count = 1;
+            tweets[numTweets++] = tweet;
+        }
+    }
+
+    return NULL;
+}
+
+
+
+// TODO NOTE: don't use strlen use memcpy, etc
+void printTop10(FILE* fp) {
+    Tweet** tweet = parseFile(fp);
+    // TODO get position of tweeter column from header on line 1
+    // TODO get rest of lines of fp, strtok for ',', check if tweeterCol
+    // exists, then count into a hashtable
+    // TODO sort and print
+}
+
+char* trimSpaces(char* str) {
+    char* ptr;
+
+    // remove leading spaces
+    while (*str == ' ') {
+        str++;
+    }
+
+    // remove trailing spaces from end
+    ptr = str;
+    while (*ptr != '\0') { // find last character
+        ptr++;
+    }
+    ptr--;
+    while (*ptr == ' ' && ptr != str) { // remove trailing spaces
+        ptr--;
+    }
+
+    // null terminate
+    *(ptr + 1) = '\0';
+
+    return str;
+}
+
+
+char** tokenize(char* line, char* delimiters) {
+    char** elements;
+    int numElements;
+    char* element;
+    int size; // represents current size of element
+
+    // dynamic allocation
+    elements = (char**)malloc(MAX_LINE_LENGTH * sizeof(char));
+    for (int i = 0; i < MAX_LINE_LENGTH; i++) {
+        elements[i] = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
+    }
+    element = (char*)malloc(MAX_LINE_LENGTH * sizeof(char) + 1); // + 1 for null terminator
+
+    // tokenize line by delimiters
+    size = numElements = 0;
+    for (int i = 0; line[i] != '\0'; i++) { // loop until end of line
+        // check if char is a delimiter and save 1 byte for null terminator
+        if (!isDelimiter(line[i], delimiters) && size < MAX_LINE_LENGTH - 1) {
+            element[size++] = line[i];
+        } else {
+            element[size] = '\0'; // TODO is this needed?
+            element = trimSpaces(element);
+            memcpy(elements[numElements++], element, size + 1);
+            size = 0;
+        }
+    }
+
+    return elements;
+}
+
+
+Tweet toTweet(char** data) {
+    Tweet tweet;
+    return tweet;
+}
+
+
+void updateTweets(char** tokenizedLine, Tweet* tweet) {
 
 }
 
-int main(int numArgs,char** args)
-{
-	char* fileName = (char *)malloc(sizeof(char));
-	int fd;
-	
-	checkArgs(numArgs);
 
-	// Only gets to this part of the code if there are only two command line arguments
-	strcpy(fileName,args[1]);
-	// FIXME: Omit following line
-	printf("The name of the file is: %s\n",fileName);
+int main(int argc, char **argv) {
+    FILE* fp;
 
-	// Opening the file
-	fd = open(fileName,O_RDONLY);
+    // check command line arguments
+    if (argc != 2) {
+        RAISE_ERROR("Invalid Input Format\n");
+    }
+   
+    // check if can open fp
+    if ((fp = fopen(argv[1], "r")) == NULL) {
+        fclose(fp);
+        RAISE_ERROR("Invalid Input Format\n");
+    }
 
-	if(fd == -1) {
-		printf("Non-existent file.\n");
-		exit(0);
-	}
+    printTop10(fp);
 
-	printf("The file has been opened.\n");
-	close(fd);
-
-	return 0;
+    return 0;
 }
