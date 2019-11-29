@@ -3,9 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define RAISE_ERROR(msg)     \
-        printf(msg);         \
-        exit(1)
 #define MAX_LINE_CHARS 1024
 #define MAX_LINE_LENGTH  MAX_LINE_CHARS + 2 // null terminator and newline/EOF
 #define MAX_FILE_LINES 20000
@@ -30,18 +27,82 @@ typedef struct {
 } TweetData;
 
 // FILE DECLARATIONS
+void CHECK_HAS_COMMA(char* token);
+void CHECK_LENGTH(char* line);
+void HANDLE_QUOTES(char* token);
+void RAISE_ERROR(char msg[]);
 int comparator(const void *p, const void *q); 
 int countNumCols(char* header); 
 Tweet* findTweet(Tweet* tweets, char* name, int numTweets);
 void free2DArray(char** arr, int size);
 int getNameColumnPosition(char* line, int numCols);
+bool hasQuotes(char* str);
 bool isDelimiter(char c, char* delimiters);
-bool matches(char* str);
 TweetData* parseFile(FILE* fp);
 void printTop10(FILE* fp);
+void stripQuotes(char* str); 
 char** tokenize(char* line, char* delimiters, int numCols);
 TweetData* toTweetData(FILE* fp, int numCols, int namePos);
 char* trim(char* str);
+
+bool needQuotes = false;
+
+void CHECK_HAS_COMMA(char* token) {
+    while (*token != '\0') {
+        if (*token == ',') {
+            RAISE_ERROR("0Invalid File Format\n");
+        }
+        token++;
+    }
+}
+
+
+void CHECK_LENGTH(char* line) {
+    if (!line || strlen(line) > MAX_LINE_LENGTH) {
+        RAISE_ERROR("1Invalid File Format\n");
+    }
+}
+
+
+void HANDLE_QUOTES(char* token) {
+    if (needQuotes != hasQuotes(token)) {
+        RAISE_ERROR("1AAInvalid File Format\n");
+    }
+
+    if (needQuotes) {
+        stripQuotes(token);
+    }
+}
+
+
+bool hasQuotes(char* str) {
+    bool endIsQuote;
+    int length;
+    bool startIsQuote;
+
+    length = strlen(str);
+
+    if (length < 2) {
+        return false;
+    }
+
+    startIsQuote = str[0] == '"';
+    endIsQuote = str[length - 1] == '"';
+
+    if ((!startIsQuote && endIsQuote) ||
+      (startIsQuote && !endIsQuote)) {
+        RAISE_ERROR("1AInvalid File Format\n");
+    }
+
+    return startIsQuote && endIsQuote;
+}
+
+
+void RAISE_ERROR(char msg[]) {
+    printf("%s", msg);
+    exit(1);
+}
+
 
 int comparator(const void *p, const void *q) 
 {
@@ -57,7 +118,7 @@ int countNumCols(char* header) {
     int numCols;
 
     if (!header) {
-       RAISE_ERROR("6Invalid File Format\n"); 
+       RAISE_ERROR("2Invalid File Format\n"); 
     }
 
     numCols = 0;
@@ -99,18 +160,26 @@ int getNameColumnPosition(char* header, int numCols) {
     nameFound = false;
     for (int col = 0; col < numCols; col++) {
         // check for duplicate name columns
-        if (matches(tokenizedLine[col]) && nameFound) {
-            RAISE_ERROR("1Invalid Input Format\n");
+        if (nameFound && (!strcmp(tokenizedLine[col], NAME) || !strcmp(tokenizedLine[col], QUOTED_NAME))) {
+            RAISE_ERROR("2AInvalid File Format\n");
         }
 
-        if (matches(tokenizedLine[col])) {
+        if (!strcmp(tokenizedLine[col], NAME)) {
+            needQuotes = false;
             namePos = col;
             nameFound= true;
+        }
+
+        if (!strcmp(tokenizedLine[col], QUOTED_NAME)) {
+            needQuotes = true;
+            stripQuotes(tokenizedLine[col]);
+            namePos = col;
+            nameFound = true;
         }
     }
 
     if (!nameFound) {
-        RAISE_ERROR("2Invalid Input Format\n");
+        RAISE_ERROR("4Invalid Input Format\n");
     }
 
     // deallocate dynamic memory
@@ -130,21 +199,15 @@ bool isDelimiter(char c, char* delimiters) {
 }
 
 
-bool matches(char* str) {
-    return !strcmp(str, NAME) || !strcmp(str, QUOTED_NAME);
-}
-
-
 TweetData* parseFile(FILE* fp) {
     char line[MAX_LINE_LENGTH];
     int namePos;
     int numCols;
     TweetData* tweetData;
 
-
-
     // get position of name column in the header row
     fgets(line, MAX_LINE_LENGTH, fp);               // get header row
+    CHECK_LENGTH(line);
     numCols = countNumCols(line);                   // count number of columns
     namePos = getNameColumnPosition(line, numCols); // get pos of name column
 
@@ -175,6 +238,18 @@ void printTop10(FILE* fp) {
 }
 
 
+void stripQuotes(char* str) {
+    int length;
+
+    length = strlen(str);
+
+    for (int i = 0; i < length; i++) {
+        str[i] = str[i + 1];
+    }
+    str[length - 2] = str[length - 1];
+}
+
+
 TweetData* toTweetData(FILE* fp, int numCols, int namePos) {
     char line[MAX_LINE_LENGTH];
     char name[MAX_LINE_LENGTH];
@@ -188,7 +263,9 @@ TweetData* toTweetData(FILE* fp, int numCols, int namePos) {
 
     tweetData->numTweets = 0;
     for (int i = 0; fgets(line, MAX_LINE_LENGTH, fp); i++) {
+        CHECK_LENGTH(line);
         tokenizedLine = tokenize(line, "\n,", numCols);
+        HANDLE_QUOTES(tokenizedLine[namePos]);
         strcpy(name, tokenizedLine[namePos]);
         free2DArray(tokenizedLine, MAX_LINE_LENGTH);
 
@@ -229,6 +306,7 @@ char** tokenize(char* line, char* delimiters, int numCols) {
             token[size++] = line[i];
         } else {
             token[size] = '\0'; // TODO is this needed?
+            CHECK_HAS_COMMA(token);
             trimmedElement = trim(token);
             memcpy(tokens[numTokens++], trimmedElement, size + 1);
             size = 0;
@@ -238,7 +316,7 @@ char** tokenize(char* line, char* delimiters, int numCols) {
     free(token);
 
     if (numTokens != numCols) {
-        RAISE_ERROR("7Invalid File Format\n");
+        RAISE_ERROR("5Invalid File Format\n");
     }
 
     return tokens;
@@ -268,16 +346,17 @@ int main(int argc, char **argv) {
 
     // check command line arguments
     if (argc != 2) {
-        RAISE_ERROR("3Invalid Input Format\n");
+        RAISE_ERROR("6Invalid Input Format\n");
     }
    
     // check if can open fp
     if ((fp = fopen(argv[1], "r")) == NULL) {
-        RAISE_ERROR("4Invalid Input Format\n");
+        RAISE_ERROR("7Invalid Input Format\n");
     }
 
     printTop10(fp);
 
     fclose(fp);
+
     return 0;
 }
