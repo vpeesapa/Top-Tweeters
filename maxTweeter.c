@@ -1,497 +1,361 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
-#define MAX_LINE_LENGTH 1024
+#define MAX_LINE_CHARS 1024
+#define MAX_LINE_LENGTH  MAX_LINE_CHARS + 2 // null terminator and newline/EOF
 #define MAX_FILE_LINES 20000
+//#define MAX_LINE_LENGTH 1024 + 1
+//#define MAX_FILE_LINES 20000
+#define NAME "name"
+#define QUOTED_NAME "\"name\""
+/*TODO notes
+   311: "1,1" invalid
+   314: Only strip 1 layer of quotes
+   319: Check line lengths and # of lines
+*/
 
-int numFields;
-int numTweeters;
-bool needsQuotes;
+typedef struct {
+    char name[MAX_LINE_LENGTH];
+    int count;
+} Tweet;
 
-struct Tweeters {
-	char* name;
-	int count;
-};
+typedef struct {
+    int numTweets;
+    Tweet* tweets;
+} TweetData;
 
-/*
- * Function that checks if the program has one additional command line argument
- * @numArgs: The number of command line arguments for the program
- */
-void checkArgs(int numArgs)
-{
-	if(numArgs != 2) {
-		printf("Invalid Input Format\n");
-		exit(0);
-	}
-}
+// FILE DECLARATIONS
+void CHECK_HAS_COMMA(char* token);
+void CHECK_LENGTH(char* line);
+void HANDLE_QUOTES(char* token);
+void RAISE_ERROR(char msg[]);
+int comparator(const void *p, const void *q); 
+int countNumCols(char* header); 
+Tweet* findTweet(Tweet* tweets, char* name, int numTweets);
+void free2DArray(char** arr, int size);
+int getNameColumnPosition(char* line, int numCols);
+bool hasQuotes(char* str);
+bool isDelimiter(char c, char* delimiters);
+TweetData* parseFile(FILE* fp);
+void printTop10(FILE* fp);
+void stripQuotes(char* str); 
+char** tokenize(char* line, char* delimiters, int numCols);
+TweetData* toTweetData(FILE* fp, int numCols, int namePos);
+//char* trim(char* str);
 
-/*
- * Function that returns a list of all positions of commas in @fileHeader
- * @fileHeader: The string that needs to be traversed
- */
-int* findCommaPositions(char* fileHeader)
-{
-	int* commaPositions = (int *)malloc(numFields * sizeof(int));
-	int i;
+bool needQuotes = false;
 
-	for(i = 0;fileHeader[i] != '\0';i++) {
-		if(fileHeader[i] == ',') {
-			numFields += 1;
-			commaPositions = (int *)realloc(commaPositions,numFields * sizeof(int));
-			commaPositions[numFields - 1] = i;
-		}
-	}
-
-	return commaPositions;
-}
-
-/*
- * Function that allocates memory to create an array of strings
- */
-char** create2DArray()
-{
-	int i;
-	char** stringArray = (char **)malloc(MAX_LINE_LENGTH * sizeof(char *));
-
-	for(i = 0;i < numFields + 1;i++) {
-		stringArray[i] = (char *)malloc(MAX_LINE_LENGTH * sizeof(char));
-	}
-
-	return stringArray;
-}
-
-/*
- * Function that deallocates memory allocated for @stringArray
- * @stringArray: The array of strings that needs to be deallocated
- */
-void free2DArray(char** stringArray)
-{
-	int i;
-
-	for(i = 0;i < numFields + 1;i++) {
-		free(stringArray[i]);
-	}
-	free(stringArray);
-}
-
-/*
- * Function that returns the substring of a string in [start,end)
- * @string: The string whose substring needs to be returned
- * @start: The starting index of the substring within @string
- * @end: The ending index of the substring within @string
- */
-char* getSubstring(char* string,int start,int end)
-{
-	int i;
-	int substringIndex = 0;
-	char* substring = (char *)malloc((end - start) * sizeof(char));
-
-	for(i = start;i < end;i++) {
-		substring[substringIndex++] = string[i];
-	}
-
-	return substring;
-}
-
-/*
- * Function to check if quotes are used correctly
- * @element: One cell in the file
- */
-void validateQuotes(char* element) {
-    int numQuoteChars = 0;
-    int i;
-
-    // count number of quote characters in element
-    for(i = 0;element[i] != '\0';i++) {
-        if(element[i] == '"') {
-            numQuoteChars += 1;
+void CHECK_HAS_COMMA(char* token) {
+    while (*token != '\0') {
+        if (*token == ',') {
+            RAISE_ERROR("0Invalid File Format\n");
         }
-    }
-
-    if(numQuoteChars % 2 != 0) {
-        // If there is an odd number of quote characters
-        printf("Invalid Input Format\n");
-        exit(0);
+        token++;
     }
 }
 
-/*
- * Function that checks if cell has quotes
- * @element: One cell in the file
- */
-bool hasQuotes(char* element) {
-    if (!element) {
-        printf("Invalid Input Format\n");
-        exit(0);
-    }
 
-    return (element[0] == '"') && (element[strlen(element) - 1] == '"');
+void CHECK_LENGTH(char* line) {
+    if (!line || strlen(line) > MAX_LINE_LENGTH) {
+        RAISE_ERROR("Invalid File Format\n");
+    }
 }
 
-/* 
- * Function to handle valid quote usage of a given cell if needed
- * @element: One cell in the file
- */
-void handleQuotes(char* element) {
-    bool startIsQuote;
+
+void HANDLE_QUOTES(char* token) {
+    if (needQuotes != hasQuotes(token)) {
+        RAISE_ERROR("Invalid File Format\n");
+    }
+
+    if (needQuotes) {
+        stripQuotes(token);
+    }
+}
+
+
+bool hasQuotes(char* str) {
     bool endIsQuote;
+    int length;
+    bool startIsQuote;
 
-    if (!element) {
-        printf("Invalid Input Format\n");
-        exit(0);
+    length = strlen(str);
+
+    if (length < 2) {
+        return false;
     }
 
-    validateQuotes(element);
+    startIsQuote = str[0] == '"';
+    endIsQuote = str[length - 1] == '"';
 
-    startIsQuote = element[0] == '"';
-    endIsQuote = element[strlen(element) - 1] == '"';
-
-    if ((!startIsQuote && endIsQuote) || (startIsQuote && !endIsQuote)) {
-        // If characters exist outside the most outer quotes
-        printf("Invalid Input Format\n");
-        exit(0);
+    if ((!startIsQuote && endIsQuote) ||
+      (startIsQuote && !endIsQuote)) {
+        RAISE_ERROR("Invalid File Format\n");
     }
 
-    if (hasQuotes(element) != needsQuotes) {
-        printf("Invalid Input Format\n");
-        exit(0);
+    return startIsQuote && endIsQuote;
+}
+
+
+void RAISE_ERROR(char msg[]) {
+    printf("%s", msg);
+    exit(1);
+}
+
+
+int comparator(const void *p, const void *q) 
+{
+    // Get the values at given addresses 
+    const Tweet* l = (const Tweet*) p;
+    const Tweet* r = (const Tweet*) q;
+
+    return l->count < r->count;
+} 
+
+
+int countNumCols(char* header) {
+    int numCols;
+
+    if (!header) {
+       RAISE_ERROR("Invalid File Format\n"); 
     }
-}
 
-/*
- * Function that parses @fileHeader
- * @fileHeader: The header of the file
- */
-char** parseHeader(char* fileHeader)
-{
-	int* commaPositions = findCommaPositions(fileHeader);
-	char** headerColumns = create2DArray();
-	int i;
-
-	if(numFields != 0) {
-		// Gets the first column
-		strcpy(headerColumns[0],getSubstring(fileHeader,0,commaPositions[0]));
-
-		// Gets every other column except for the last
-		for(i = 1;i < numFields;i++) {
-			strcpy(headerColumns[i],getSubstring(fileHeader,commaPositions[i - 1] + 1,commaPositions[i]));
-		}
-
-		// Gets the last column
-		strcpy(headerColumns[numFields],getSubstring(fileHeader,commaPositions[numFields - 1] + 1,strlen(fileHeader)));
-		//headerColumns[numFields + 1] = '\0';
-	} else {
-		strcpy(headerColumns[0],getSubstring(fileHeader,0,strlen(fileHeader)));
-		//headerColumns[1] = '\0';
-	}
-
-	// Deallocates memory allocated for commaPositions
-	free(commaPositions);
-
-	return headerColumns;
-}
-
-/*
- * Function that searches for a column called name or "name" and returns its index
- * in @headerColumns.
- * @fp: The file that's being read
- */
-int findName(FILE* fp,char** headerColumns)
-{
-	int nameIndex = -1;
-	int i;
-
-	for(i = 0;i < numFields + 1;i++) {
-		if(strcmp(headerColumns[i],"name") == 0 || strcmp(headerColumns[i],"\"name\"") == 0) {
-			if(nameIndex == -1) {
-				nameIndex = i;
-			} else {
-				// If there is more than one column called name or "name"
-				printf("Invalid Input Format\n");
-				fclose(fp);
-				exit(0);
-			}
-		}
-	}
-
-	if(nameIndex == -1) {
-		// If there is no column called name or "name"
-		printf("Invalid Input Format\n");
-		fclose(fp);
-		exit(0);
-	}
-
-	return nameIndex;
-}
-
-/*
- * Function that checks whether the number of fields remain consistent in the
- * remaining portion of the file
- * @fp: The file that's being read
- * @fileContents: The line that's been read from the file
- */
-void getNumCommas(FILE* fp,char* fileContents)
-{
-	int numCommas = 0;
-	int i;
-
-	for(i = 0;fileContents[i] != '\0';i++) {
-		if(fileContents[i] == ',') {
-			numCommas += 1;
-		}
-	}
-
-	if(numCommas != numFields) {
-		// If the number of fields in the row does not match with the number of fields in the header
-		printf("Invalid Input Format\n");
-		fclose(fp);
-		exit(0);
-	}
-
-}
-
-/*
- * Function that gets the information of the tweeter from @fileContents
- */
-char** getTweeterInfo(char* fileContents)
-{
-	char** tweeterInfo = create2DArray();
-	int i;
-	int infoIndex = 0;
-	int startIndex = 0;
-	char* info = (char *)malloc(MAX_LINE_LENGTH * sizeof(char));
-
-	// Gets all the information about the tweeter except the last column
-	for(i = 0;fileContents[i] != '\0';i++) {
-		if(fileContents[i] != ',') {
-			info[infoIndex++] = fileContents[i];
-		} else {
-			info[infoIndex] = '\0';
-			memcpy(tweeterInfo[startIndex++],info,infoIndex + 1);
-			infoIndex = 0;
-		}
-	}
-	// Gets the information stored in the last column
-	info[infoIndex] = '\0';
-	memcpy(tweeterInfo[startIndex++],info,infoIndex + 1);
-	//tweeterInfo[startIndex] = '\0';
-
-	//free(info);
-
-	return tweeterInfo;
-}
-
-/*
- * Function that returns the index of the tweeter with @tweeterName
- * Returns -1 when there is no such tweeter
- */
-int findTweeter(struct Tweeters* tweeters,char* tweeterName)
-{
-	int i;
-
-	if(tweeters == NULL) {
-		// If the list is empty
-		return -1;
-	}
-
-	for(i = 0;i < numTweeters;i++) {
-		if(strcmp(tweeters[i].name,tweeterName) == 0) {
-			return i;
-		}
-	}
-
-	return -1;
-}
-
-/*
- * Function that sorts the list of tweeters, @tweeters, in descending order
- */
-void sort(struct Tweeters** tweeters)
-{
-	int i,j;
-	struct Tweeters temp;
-
-	for(i = 0;i < numTweeters - 1;i++) {
-		for(j = 0;j < numTweeters - i - 1;j++) {
-			if((*tweeters)[j].count < (*tweeters)[j + 1].count) {
-				// Sort in descending order
-				temp = (*tweeters)[j];
-				(*tweeters)[j] = (*tweeters)[j + 1];
-				(*tweeters)[j + 1] = temp;
-			}
-		}
-	}
-}
-
-/*
- * Function that prints a string without its surrounding quotes
- * @str: the string to print without its quotes (assumes surrounding quotes)
- */
-void printWithoutQuotes(char* str) {
-    for (int i = 1; i < strlen(str) - 1; i++) {
-        printf("%c", str[i]);
-    }
-}
-
-/*
- * Function that prints the top tweeters found in the file
- */
-void printTopTweeters(struct Tweeters* tweeters)
-{
-    int i;
-
-    if(numTweeters >= 10) {
-        for(i = 0;i < 10;i++) {
-            if (needsQuotes) {
-                printWithoutQuotes(tweeters[i].name);
-            }
-            else {
-                printf("%s", tweeters[i].name);
-            }
-            printf(": %d\n",tweeters[i].count);
-        }
-    } else {
-        for(i = 0;i < numTweeters;i++) {
-            if (needsQuotes) {
-                printWithoutQuotes(tweeters[i].name);
-            }
-            else {
-                printf("%s", tweeters[i].name);
-            }
-            printf(": %d\n",tweeters[i].count);
+    numCols = 0;
+    for (int i = 0; header[i] != '\0'; i++) {
+        if (header[i] == ',') {
+            numCols++;
         }
     }
+
+    return numCols + 1;
 }
 
-/*
- * Function that parses the remaining part of the file @fp
- * @fp: The file that needs to be parsed
- * @nameIndex: The index corresponding to the name column
- */
-void parseRemaining(FILE* fp,int nameIndex)
-{
-    struct Tweeters* tweeters = (struct Tweeters *)malloc(numTweeters * sizeof(struct Tweeters));
-    char fileContents[MAX_LINE_LENGTH];
-    char* tweeterName;
-    char** tweeterInfo;
-    int tweeterIndex;
 
-    while(fgets(fileContents,MAX_LINE_LENGTH,fp)) {
-        
-        if(feof(fp)) {
-        	fileContents[strlen(fileContents)] = '\0';	
+Tweet* findTweet(Tweet* tweets, char* name, int numTweets) {
+    for (int i = 0; i < numTweets; i++) {
+        if (!strcmp(tweets[i].name, name)) {
+            return &tweets[i];
+        }
+    }
+    return NULL;
+}
+
+
+void free2DArray(char** arr, int size) {
+    for (int i = 0; i < size; i++) {
+        free(arr[i]);
+    }
+    free(arr);
+}
+
+
+int getNameColumnPosition(char* header, int numCols) {
+    bool nameFound;
+    int namePos;
+    char** tokenizedLine;
+
+    tokenizedLine = tokenize(header, "\n,", numCols);
+    
+    nameFound = false;
+    for (int col = 0; col < numCols; col++) {
+        // check for duplicate name columns
+        if (nameFound && (!strcmp(tokenizedLine[col], NAME) || !strcmp(tokenizedLine[col], QUOTED_NAME))) {
+            RAISE_ERROR("Invalid File Format\n");
+        }
+
+        if (!strcmp(tokenizedLine[col], NAME)) {
+            needQuotes = false;
+            namePos = col;
+            nameFound= true;
+        }
+
+        if (!strcmp(tokenizedLine[col], QUOTED_NAME)) {
+            needQuotes = true;
+            stripQuotes(tokenizedLine[col]);
+            namePos = col;
+            nameFound = true;
+        }
+    }
+
+    if (!nameFound) {
+        RAISE_ERROR("Invalid Input Format\n");
+    }
+
+    // deallocate dynamic memory
+    free2DArray(tokenizedLine, MAX_LINE_LENGTH);
+
+    return namePos;
+}
+
+
+bool isDelimiter(char c, char* delimiters) {
+    for (int i = 0; delimiters[i] != '\0'; i++) {
+        if (c == delimiters[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+TweetData* parseFile(FILE* fp) {
+    char line[MAX_LINE_LENGTH];
+    int namePos;
+    int numCols;
+    TweetData* tweetData;
+
+    // get position of name column in the header row
+    fgets(line, MAX_LINE_LENGTH, fp);               // get header row
+    CHECK_LENGTH(line);
+    numCols = countNumCols(line);                   // count number of columns
+    namePos = getNameColumnPosition(line, numCols); // get pos of name column
+
+    // read file into tweetData struct
+    tweetData = toTweetData(fp, numCols, namePos);
+
+    if (tweetData->numTweets < 2) {
+        return tweetData;
+    }
+
+    qsort(tweetData->tweets, tweetData->numTweets, sizeof(tweetData->tweets[0]), comparator);
+
+    return tweetData;
+}
+
+
+void printTop10(FILE* fp) {
+    TweetData* tweetData = parseFile(fp);
+
+    for (int i = 0; i < tweetData->numTweets; i++) {
+        if (i < 10) {
+            printf("%s: %d\n", tweetData->tweets[i].name, tweetData->tweets[i].count);
+        }
+    }
+
+    free(tweetData->tweets);
+    free(tweetData);
+}
+
+
+void stripQuotes(char* str) {
+    int length;
+
+    length = strlen(str);
+
+    for (int i = 0; i < length; i++) {
+        str[i] = str[i + 1];
+    }
+    str[length - 2] = str[length - 1];
+}
+
+
+TweetData* toTweetData(FILE* fp, int numCols, int namePos) {
+    char line[MAX_LINE_LENGTH];
+    char name[MAX_LINE_LENGTH];
+    char** tokenizedLine;
+    Tweet* tweet;
+    TweetData* tweetData;
+
+    // dynamic allocation
+    tweetData = (TweetData*)malloc(sizeof(TweetData));
+    tweetData->tweets = (Tweet*)malloc(MAX_FILE_LINES * MAX_LINE_LENGTH * sizeof(Tweet));
+
+    tweetData->numTweets = 0;
+    for (int i = 0; fgets(line, MAX_LINE_LENGTH, fp); i++) {
+        CHECK_LENGTH(line);
+        tokenizedLine = tokenize(line, "\n,", numCols);
+        HANDLE_QUOTES(tokenizedLine[namePos]);
+        strcpy(name, tokenizedLine[namePos]);
+        free2DArray(tokenizedLine, MAX_LINE_LENGTH);
+
+        tweet = findTweet(tweetData->tweets, name, tweetData->numTweets);
+        if (tweet) {
+            tweet->count++;
         } else {
-        	fileContents[strlen(fileContents) - 1] = '\0';
+            strcpy(tweetData->tweets[tweetData->numTweets].name, name);
+            tweetData->tweets[tweetData->numTweets].count = 1;
+            tweetData->numTweets += 1;
         }
+    }
 
-        getNumCommas(fp,fileContents);
-        tweeterInfo = getTweeterInfo(fileContents);
-        tweeterName = (char *)malloc(sizeof(char));
-        strcpy(tweeterName,tweeterInfo[nameIndex]);
+    return tweetData;
+}
 
-        tweeterIndex = findTweeter(tweeters,tweeterName);
-        if(tweeterIndex == -1) {
-            handleQuotes(tweeterName);
 
-            // Adding a new tweeter to the list
-            numTweeters += 1;
-            tweeters = (struct Tweeters *)realloc(tweeters,numTweeters * sizeof(struct Tweeters));
-            tweeters[numTweeters - 1].name = (char *)malloc(sizeof(char));
-            strcpy(tweeters[numTweeters - 1].name,tweeterName);
-            tweeters[numTweeters - 1].count = 1;
+char** tokenize(char* line, char* delimiters, int numCols) {
+    char** tokens;
+    int numTokens;
+    char* token;
+    char* trimmedElement;
+    int size; // represents current size of token
+
+    // dynamic allocation
+    tokens = (char**)malloc((MAX_LINE_LENGTH) * sizeof(char*));
+
+    for (int i = 0; i < MAX_LINE_LENGTH; i++) {
+        tokens[i] = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
+    }
+    token = (char*)malloc(MAX_LINE_LENGTH * sizeof(char));
+
+    // tokenize line by delimiters
+    size = numTokens = 0;
+    for (int i = 0; line[i] != '\0'; i++) { // loop until end of line
+        // terminate at delimiters and add to token array
+        if (!isDelimiter(line[i], delimiters) && size < MAX_LINE_LENGTH - 1) {
+            token[size++] = line[i];
         } else {
-            // The tweeter was found in the list
-            tweeters[tweeterIndex].count += 1;
+            token[size] = '\0'; // TODO is this needed?
+            CHECK_HAS_COMMA(token);
+            memcpy(tokens[numTokens++], trimmedElement, size + 1);
+            size = 0;
         }
-
-        //free(tweeterName);
     }
 
-    if(numTweeters != 0) {
-    	sort(&tweeters);
-	    printTopTweeters(tweeters);
+    free(token);
 
-	    //free2DArray(tweeterInfo);
+    if (numTokens != numCols) {
+        RAISE_ERROR("Invalid File Format\n");
     }
 
-    //free(tweeters);
+    return tokens;
 }
 
-/*
- * Function that checks if the header @headerColumn has any duplicate columns in the
- * file @fp.
- */
-void checkDuplicates(FILE* fp,char** headerColumn,int headerColumnIndex)
-{
-	int i;
 
-	for(i = 0;i < numFields + 1;i++) {
-		if(strcmp(headerColumn[i],headerColumn[headerColumnIndex]) == 0 && headerColumnIndex != i) {
-			printf("Invalid Input Format\n");
-			fclose(fp);
-			exit(0);
-		}
-	}
-}
+// char* trim(char* str) {
+//     char* end;
 
-/*
- * Function that opens and reads a file with name @fileName, if it exists
- * @fileName: Name of the file
- */
-void readFile(char* fileName)
-{
-	FILE* fp;
-	int fileSize,nameIndex,i;
-	char fileHeader[MAX_LINE_LENGTH];
-	char** headerColumns;
+//     // trim leading spaces
+//     while (*str == ' ' || *str == '\r') str++;
 
-	// Opening the file
-	fp = fopen(fileName,"r");
+//     // trim trailing spaces
+//     end = str + strlen(str) - 1;
+    
+//     while (end >= str && (*end == ' ' || *end == '\r')) end--;
 
-	if(fp == NULL) {
-		// If the file doesn't exist
-		printf("Invalid Input Format\n");
-		exit(0);
-	}
+//     // null terminate
+//     end[1] = '\0';
 
-	fseek(fp,0,SEEK_END);
-	fileSize = ftell(fp);
-	if(fileSize == 0) {
-		// If the file is empty
-		printf("Invalid Input Format\n");
-		fclose(fp);
-		exit(0);
-	}
-	fseek(fp,0,SEEK_SET);
+//     return str;
+// }
 
-	// If the non-empty file exists, need to parse it
-	fgets(fileHeader,MAX_LINE_LENGTH,fp);
-	if(feof(fp)) {
-		fileHeader[strlen(fileHeader)] = '\0';
-	} else {
-		fileHeader[strlen(fileHeader) - 1] = '\0';
-	}
 
-	headerColumns = parseHeader(fileHeader);
-	nameIndex = findName(fp,headerColumns);
-	for(i = 0;i < numFields + 1;i++) {
-		checkDuplicates(fp,headerColumns,i);
-	}
-	needsQuotes = hasQuotes(headerColumns[nameIndex]);
-	parseRemaining(fp,nameIndex);
+int main(int argc, char **argv) {
+    FILE* fp;
 
-	//free2DArray(headerColumns);
-	fclose(fp);
-}
+    // check command line arguments
+    if (argc != 2) {
+        RAISE_ERROR("Invalid Input Format\n");
+    }
+   
+    // check if can open fp
+    if ((fp = fopen(argv[1], "r")) == NULL) {
+        RAISE_ERROR("Invalid Input Format\n");
+    }
 
-int main(int numArgs,char** args)
-{
-	checkArgs(numArgs);
-	// Only gets to this part of the code if there are only two command line arguments
-	// Opens and reads file, if exists
-	readFile(args[1]);
+    printTop10(fp);
 
-	return 0;
+    fclose(fp);
+
+    return 0;
 }
