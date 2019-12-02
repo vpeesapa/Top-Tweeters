@@ -278,7 +278,7 @@ char** getTweeterInfo(char* fileContents)
 	memcpy(tweeterInfo[startIndex++],info,infoIndex + 1);
 	//tweeterInfo[startIndex] = '\0';
 
-	free(info);
+	//free(info);
 
 	return tweeterInfo;
 }
@@ -406,17 +406,17 @@ void parseRemaining(FILE* fp,int nameIndex)
             tweeters[tweeterIndex].count += 1;
         }
 
-        free(tweeterName);
+        //free(tweeterName);
     }
 
     if(numTweeters != 0) {
     	sort(&tweeters);
 	    printTopTweeters(tweeters);
 
-	    free2DArray(tweeterInfo);
+	    //free2DArray(tweeterInfo);
     }
 
-    free(tweeters);
+    //free(tweeters);
 }
 
 /*
@@ -482,7 +482,7 @@ void readFile(char* fileName)
 	needsQuotes = hasQuotes(headerColumns[nameIndex]);
 	parseRemaining(fp,nameIndex);
 
-	free2DArray(headerColumns);
+	//free2DArray(headerColumns);
 	fclose(fp);
 }
 
