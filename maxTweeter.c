@@ -380,7 +380,11 @@ void parseRemaining(FILE* fp,int nameIndex)
 
     while(fgets(fileContents,MAX_LINE_LENGTH,fp)) {
         
-        fileContents[strlen(fileContents) - 1] = '\0';
+        if(feof(fp)) {
+        	fileContents[strlen(fileContents)] = '\0';	
+        } else {
+        	fileContents[strlen(fileContents) - 1] = '\0';
+        }
 
         getNumCommas(fp,fileContents);
         tweeterInfo = getTweeterInfo(fileContents);
@@ -416,13 +420,30 @@ void parseRemaining(FILE* fp,int nameIndex)
 }
 
 /*
+ * Function that checks if the header @headerColumn has any duplicate columns in the
+ * file @fp.
+ */
+void checkDuplicates(FILE* fp,char** headerColumn,int headerColumnIndex)
+{
+	int i;
+
+	for(i = 0;i < numFields + 1;i++) {
+		if(strcmp(headerColumn[i],headerColumn[headerColumnIndex]) == 0 && headerColumnIndex != i) {
+			printf("Invalid Input Format\n");
+			fclose(fp);
+			exit(0);
+		}
+	}
+}
+
+/*
  * Function that opens and reads a file with name @fileName, if it exists
  * @fileName: Name of the file
  */
 void readFile(char* fileName)
 {
 	FILE* fp;
-	int fileSize,nameIndex;
+	int fileSize,nameIndex,i;
 	char fileHeader[MAX_LINE_LENGTH];
 	char** headerColumns;
 
@@ -455,6 +476,9 @@ void readFile(char* fileName)
 
 	headerColumns = parseHeader(fileHeader);
 	nameIndex = findName(fp,headerColumns);
+	for(i = 0;i < numFields + 1;i++) {
+		checkDuplicates(fp,headerColumns,i);
+	}
 	needsQuotes = hasQuotes(headerColumns[nameIndex]);
 	parseRemaining(fp,nameIndex);
 
