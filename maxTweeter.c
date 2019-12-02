@@ -307,7 +307,7 @@ char** tokenize(char* line, char* delimiters, int numCols) {
         } else {
             token[size] = '\0'; // TODO is this needed?
             CHECK_HAS_COMMA(token);
-            memcpy(tokens[numTokens++], trimmedElement, size + 1);
+            memcpy(tokens[numTokens++], token, size + 1);
             size = 0;
         }
     }
