@@ -181,10 +181,10 @@ char** parseHeader(char* fileHeader)
 
 		// Gets the last column
 		strcpy(headerColumns[numFields],getSubstring(fileHeader,commaPositions[numFields - 1] + 1,strlen(fileHeader)));
-		headerColumns[numFields + 1] = '\0';
+		//headerColumns[numFields + 1] = '\0';
 	} else {
 		strcpy(headerColumns[0],getSubstring(fileHeader,0,strlen(fileHeader)));
-		headerColumns[1] = '\0';
+		//headerColumns[1] = '\0';
 	}
 
 	// Deallocates memory allocated for commaPositions
@@ -276,7 +276,7 @@ char** getTweeterInfo(char* fileContents)
 	// Gets the information stored in the last column
 	info[infoIndex] = '\0';
 	memcpy(tweeterInfo[startIndex++],info,infoIndex + 1);
-	tweeterInfo[startIndex] = '\0';
+	//tweeterInfo[startIndex] = '\0';
 
 	free(info);
 
