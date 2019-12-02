@@ -6,15 +6,8 @@
 #define MAX_LINE_CHARS 1024
 #define MAX_LINE_LENGTH  MAX_LINE_CHARS + 2 // null terminator and newline/EOF
 #define MAX_FILE_LINES 20000
-//#define MAX_LINE_LENGTH 1024 + 1
-//#define MAX_FILE_LINES 20000
 #define NAME "name"
 #define QUOTED_NAME "\"name\""
-/*TODO notes
-   311: "1,1" invalid
-   314: Only strip 1 layer of quotes
-   319: Check line lengths and # of lines
-*/
 
 typedef struct {
     char name[MAX_LINE_LENGTH];
@@ -51,7 +44,7 @@ bool needQuotes = false;
 void CHECK_HAS_COMMA(char* token) {
     while (*token != '\0') {
         if (*token == ',') {
-            RAISE_ERROR("0Invalid File Format\n");
+            RAISE_ERROR("Invalid File Format\n");
         }
         token++;
     }
@@ -60,7 +53,7 @@ void CHECK_HAS_COMMA(char* token) {
 
 void CHECK_LENGTH(char* line) {
     if (!line || strlen(line) > MAX_LINE_LENGTH) {
-        RAISE_ERROR("1Invalid File Format\n");
+        RAISE_ERROR("Invalid File Format\n");
     }
 }
 
@@ -88,7 +81,7 @@ void HANDLE_QUOTES(char* token) {
     }
 
     if (needQuotes != hasQuotes(token)) {
-        RAISE_ERROR("1AAInvalid File Format\n");
+        RAISE_ERROR("Invalid File Format\n");
     }
 
     if (needQuotes) {
@@ -118,7 +111,7 @@ bool hasQuotes(char* str) {
 
     if ((!startIsQuote && endIsQuote) ||
       (startIsQuote && !endIsQuote)) {
-        RAISE_ERROR("1AInvalid File Format\n");
+        RAISE_ERROR("Invalid File Format\n");
     }
 
     return startIsQuote && endIsQuote;
@@ -145,7 +138,7 @@ int countNumCols(char* header) {
     int numCols;
 
     if (!header) {
-       RAISE_ERROR("2Invalid File Format\n"); 
+       RAISE_ERROR("Invalid File Format\n"); 
     }
 
     numCols = 0;
@@ -189,7 +182,7 @@ int getNameColumnPosition(char* header, int numCols, bool isLastLine) {
         // check for duplicate name columns
         if (nameFound && (!strcmp(tokenizedLine[col], NAME) ||
 !strcmp(tokenizedLine[col], QUOTED_NAME))) {
-            RAISE_ERROR("2AInvalid File Format\n");
+            RAISE_ERROR("Invalid File Format\n");
         }
 
         if (!strcmp(tokenizedLine[col], NAME)) {
@@ -207,7 +200,7 @@ int getNameColumnPosition(char* header, int numCols, bool isLastLine) {
     }
 
     if (!nameFound) {
-        RAISE_ERROR("4Invalid Input Format\n");
+        RAISE_ERROR("Invalid Input Format\n");
     }
 
     // deallocate dynamic memory
@@ -372,7 +365,7 @@ char** tokenize(char* line, char* delimiters, int numCols, bool isLastLine) {
     free(token);
 
     if (numTokens != numCols) {
-        RAISE_ERROR("5Invalid File Format\n");
+        RAISE_ERROR("Invalid File Format\n");
     }
 
     return tokens;
@@ -384,12 +377,12 @@ int main(int argc, char **argv) {
 
     // check command line arguments
     if (argc != 2) {
-        RAISE_ERROR("6Invalid Input Format\n");
+        RAISE_ERROR("Invalid Input Format\n");
     }
    
     // check if can open fp
     if ((fp = fopen(argv[1], "r")) == NULL) {
-        RAISE_ERROR("7Invalid Input Format\n");
+        RAISE_ERROR("Invalid Input Format\n");
     }
 
     printTop10(fp);
